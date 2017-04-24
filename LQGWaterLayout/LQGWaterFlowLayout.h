@@ -10,37 +10,33 @@
 
 /*
  *
- *  说明：高度block必须实现 使用set方法实现；其余的不设置，默认有1列，其余数据默认为0；
+ *      说明：
+ *      高度block必须实现；
+ *      其余的可以不设置；
+ *      默认有1列，其余数据默认为0
  *
  */
 
 @interface LQGWaterFlowLayout : UICollectionViewLayout
 
-//item的width
-@property (nonatomic, assign) CGFloat itemWidth;
-
-/** 列数*/
-@property (nonatomic, assign) NSInteger columnsCount;
-/** 行距*/
-@property (nonatomic, assign) CGFloat rowMargin;
-/** 列距*/
-@property (nonatomic, assign) CGFloat columnMargin;
-/** 每组的间距*/
-@property (nonatomic, assign) UIEdgeInsets sectionEdgeInset;
-/** 每次刷新增加的数据个数*/
-@property (nonatomic, assign) NSInteger addNum;
-
-/** 获得item高度（必须实现）*/
-@property (nonatomic, copy) CGFloat(^itemHeightBlock)(NSIndexPath * itemIndex, CGFloat width);
-
 /**
- *  获得头视图高度（必须实现）
- */
-@property (nonatomic, copy) CGSize(^headerSizeBlock)(NSIndexPath *headerIndex);
+ 布局类初始化方法
 
-/**
- *  获得尾视图高度（必须实现）
+ @param columnsCount 列数
+ @param rowMargin 行距
+ @param columnMargin 列距
+ @param sectionEdgeInset 组边距
+ @param itemSizeBlock 获取每个itemsize的block
+ @param headerSizeBlock 获取每个headersize的block
+ @param footerSizeBlock 获取每个footersize的block
+ @return 初始化完成的布局对象
  */
-@property (nonatomic, copy) CGSize(^footerSizeBlock)(NSIndexPath *footerIndex);
+- (instancetype)initWithColumnsCount:(NSUInteger)columnsCount
+                           rowMargin:(CGFloat)rowMargin
+                       columnsMargin:(CGFloat)columnMargin
+                    sectionEdgeInset:(UIEdgeInsets)sectionEdgeInset
+                         getItemSize:(CGSize(^)(NSIndexPath *itemIndex))itemSizeBlock
+                       getHeaderSize:(CGSize(^)(NSIndexPath *headerIndex))headerSizeBlock
+                       getFooterSize:(CGSize(^)(NSIndexPath *footerIndex))footerSizeBlock;
 
 @end

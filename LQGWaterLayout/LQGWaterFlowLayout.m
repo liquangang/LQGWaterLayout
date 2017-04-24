@@ -16,10 +16,88 @@
 @property (nonatomic, strong) NSMutableArray *attrsMuArray;
 //当前布局的section
 @property (nonatomic, assign) NSInteger section;
+/** 列数*/
+@property (nonatomic, assign) NSInteger columnsCount;
+/** 行距*/
+@property (nonatomic, assign) CGFloat rowMargin;
+/** 列距*/
+@property (nonatomic, assign) CGFloat columnMargin;
+/** 每组的间距*/
+@property (nonatomic, assign) UIEdgeInsets sectionEdgeInset;
+
+/** 
+ * 获得item高度（必须实现）
+ */
+@property (nonatomic, copy) CGSize(^itemSizeBlock)(NSIndexPath *itemIndex);
+
+/**
+ *  获得头视图高度（必须实现）
+ */
+@property (nonatomic, copy) CGSize(^headerSizeBlock)(NSIndexPath *headerIndex);
+
+/**
+ *  获得尾视图高度（必须实现）
+ */
+@property (nonatomic, copy) CGSize(^footerSizeBlock)(NSIndexPath *footerIndex);
 
 @end
 
 @implementation LQGWaterFlowLayout
+
+- (instancetype)initWithColumnsCount:(NSUInteger)columnsCount
+                           rowMargin:(CGFloat)rowMargin
+                       columnsMargin:(CGFloat)columnMargin
+                    sectionEdgeInset:(UIEdgeInsets)sectionEdgeInset
+                         getItemSize:(CGSize(^)(NSIndexPath *itemIndex))itemSizeBlock
+                       getHeaderSize:(CGSize(^)(NSIndexPath *headerIndex))headerSizeBlock
+                       getFooterSize:(CGSize(^)(NSIndexPath *footerIndex))footerSizeBlock
+{
+    if (self = [super init]) {
+        
+        self.itemSizeBlock = itemSizeBlock;
+        self.headerSizeBlock = headerSizeBlock;
+        self.footerSizeBlock = footerSizeBlock;
+        
+        //对sectionEdgeInset进行容错处理
+        //所有的属性不能小于0，如果小于0就使用默认0
+        //如果未设置也使用默认0
+        if (sectionEdgeInset.top < 0) {
+            sectionEdgeInset.top = 0;
+        }
+        
+        if (sectionEdgeInset.bottom < 0) {
+            sectionEdgeInset.bottom = 0;
+        }
+        
+        if (sectionEdgeInset.left < 0) {
+            sectionEdgeInset.left = 0;
+        }
+        
+        if (sectionEdgeInset.right < 0) {
+            sectionEdgeInset.right = 0;
+        }
+        self.sectionEdgeInset = sectionEdgeInset;
+        
+        //对columnMargin进行容错
+        if (columnMargin < 0) {
+            columnMargin = 0;
+        }
+        self.columnMargin = columnMargin;
+        
+        //对rowMargin进行容错
+        if (rowMargin < 0) {
+            rowMargin = 0;
+        }
+        self.rowMargin = rowMargin;
+        
+        //对columnsCount进行容错
+        self.columnsCount = columnsCount;
+        if (columnsCount == 0) {
+            self.columnsCount = 1;
+        }
+    }
+    return self;
+}
 
 #pragma mark - 重写父类函数
 
@@ -106,11 +184,11 @@
         }
     }];
     
-    CGFloat itemHeight = self.itemHeightBlock(indexPath, self.itemWidth);
-    CGFloat itemX = self.sectionEdgeInset.left + minColumn * (self.columnMargin + self.itemWidth);
+    CGSize itemSize = self.itemSizeBlock(indexPath);
+    CGFloat itemX = self.sectionEdgeInset.left + minColumn * (self.columnMargin + itemSize.width);
     CGFloat itemY = minY + self.rowMargin;
     
-    attri.frame = CGRectMake(itemX, itemY, self.itemWidth, itemHeight);
+    attri.frame = CGRectMake(itemX, itemY, itemSize.width, itemSize.height);
     self.maxColumnYMuArray[minColumn] = @(CGRectGetMaxY(attri.frame));
     return attri;
 }
@@ -158,7 +236,11 @@
     return footerAttri;
 }
 
-#pragma mark - 功能模块
+#pragma mark - privateMethod
+
+/**
+ *  获取最大Y值
+ */
 - (CGFloat)getMaxY{
     __block CGFloat maxY = [self.maxColumnYMuArray[0] floatValue];
     [self.maxColumnYMuArray enumerateObjectsUsingBlock:^(NSNumber *columnY, NSUInteger idx, BOOL * _Nonnull stop) {
@@ -182,7 +264,7 @@
     }
 }
 
-#pragma mark - 懒加载
+#pragma mark - getter
 
 - (NSMutableArray *)maxColumnYMuArray{
     if (!_maxColumnYMuArray) {
@@ -196,21 +278,6 @@
         _attrsMuArray = [NSMutableArray new];
     }
     return _attrsMuArray;
-}
-
-- (NSInteger)columnsCount{
-    if (_columnsCount == 0) {
-        _columnsCount = 1;
-    }
-    return _columnsCount;
-}
-
-- (CGFloat)itemWidth{
-    if (_itemWidth == 0) {
-        CGFloat allGap = self.sectionEdgeInset.left + self.sectionEdgeInset.right + (self.columnsCount - 1) * self.columnMargin;
-        _itemWidth = (CGRectGetWidth(self.collectionView.frame) - allGap) / self.columnsCount;
-    }
-    return _itemWidth;
 }
 
 @end
