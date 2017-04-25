@@ -14,8 +14,8 @@
 @property (nonatomic, strong) NSMutableArray *maxColumnYMuArray;
 //存储布局属性
 @property (nonatomic, strong) NSMutableArray *attrsMuArray;
-//当前布局的section
-@property (nonatomic, assign) NSInteger section;
+//当前布局的最后一个item
+@property (nonatomic, assign) NSIndexPath *lastIndexPath;
 /** 列数*/
 @property (nonatomic, assign) NSInteger columnsCount;
 /** 行距*/
@@ -56,52 +56,22 @@
                        getHeaderSize:(CGSize(^)(NSIndexPath *headerIndex))headerSizeBlock
                        getFooterSize:(CGSize(^)(NSIndexPath *footerIndex))footerSizeBlock
 {
+    
     if (self = [super init]) {
         
+        //赋值
         self.itemHeightBlock = itemHeightBlock;
         self.headerSizeBlock = headerSizeBlock;
         self.footerSizeBlock = footerSizeBlock;
         
-        //对sectionEdgeInset进行容错处理
-        //所有的属性不能小于0，如果小于0就使用默认0
-        //如果未设置也使用默认0
-        if (sectionEdgeInset.top < 0) {
-            sectionEdgeInset.top = 0;
-        }
-        
-        if (sectionEdgeInset.bottom < 0) {
-            sectionEdgeInset.bottom = 0;
-        }
-        
-        if (sectionEdgeInset.left < 0) {
-            sectionEdgeInset.left = 0;
-        }
-        
-        if (sectionEdgeInset.right < 0) {
-            sectionEdgeInset.right = 0;
-        }
-        self.sectionEdgeInset = sectionEdgeInset;
-        
-        //对columnMargin进行容错
-        if (columnMargin < 0) {
-            columnMargin = 0;
-        }
-        self.columnMargin = columnMargin;
-        
-        //对rowMargin进行容错
-        if (rowMargin < 0) {
-            rowMargin = 0;
-        }
-        self.rowMargin = rowMargin;
-        
-        //对columnsCount进行容错
-        self.columnsCount = columnsCount;
-        if (columnsCount == 0) {
-            self.columnsCount = 1;
-        }
-        
-        CGFloat allGap = self.sectionEdgeInset.left + self.sectionEdgeInset.right + (self.columnsCount - 1) * self.columnMargin;
-        self.itemWidth = (CGRectGetWidth(self.collectionView.frame) - allGap) / self.columnsCount;
+        //容错并赋值
+        self.sectionEdgeInset = UIEdgeInsetsMake(((sectionEdgeInset.top < 0) ? 0 : sectionEdgeInset.top),
+                                                 ((sectionEdgeInset.left < 0) ? 0 : sectionEdgeInset.left),
+                                                 ((sectionEdgeInset.bottom < 0) ? 0 : sectionEdgeInset.bottom),
+                                                 ((sectionEdgeInset.right < 0) ? 0 : sectionEdgeInset.right));
+        self.columnMargin = ((columnMargin < 0) ? 0 : columnMargin);
+        self.rowMargin = ((rowMargin < 0) ? 0 : rowMargin);
+        self.columnsCount = ((columnsCount == 0) ? 1 : columnsCount);
     }
     return self;
 }
@@ -127,41 +97,24 @@
  */
 - (void)prepareLayout{
     
-    //设置初始的每列的最大y值
-    if (self.maxColumnYMuArray.count > 0) {
-        [self.maxColumnYMuArray removeAllObjects];
-    }
-    
-    for (int i = 0; i < self.columnsCount; i++) {
-        [self.maxColumnYMuArray addObject:@(self.sectionEdgeInset.top)];
-    }
-    
-    self.section = 0;
-    [self.attrsMuArray removeAllObjects];
-    NSInteger sectionNum = self.collectionView.numberOfSections;
-    
-    for (int i = 0; i < sectionNum; i++) {
+    //添加每个item的布局到布局数组中
+    for (NSInteger i = self.lastIndexPath.section; i < self.collectionView.numberOfSections; i++) {
         
-        //获取header的布局属性
-        NSIndexPath *sectionHeaderIndexPath = [NSIndexPath indexPathForItem:0 inSection:i];
+        //添加header的布局属性
         UICollectionViewLayoutAttributes *headerAttri = [self layoutAttributesForSupplementaryViewOfKind:UICollectionElementKindSectionHeader
-                                                                                             atIndexPath:sectionHeaderIndexPath];
+                                                                                             atIndexPath:[NSIndexPath indexPathForItem:0 inSection:i]];
         [self.attrsMuArray addObject:headerAttri];
         
-        //获取当前组的item数量
-        NSInteger itemNum = [self.collectionView numberOfItemsInSection:i];
-        
-        //获取当前组的每一个item的布局属性
-        for (int j = 0; j < itemNum; j++) {
+        //添加当前组的每一个item的布局属性
+        for (NSInteger j = self.lastIndexPath.item; j < [self.collectionView numberOfItemsInSection:i]; j++) {
             NSIndexPath *itemIndexPath = [NSIndexPath indexPathForItem:j inSection:i];
             UICollectionViewLayoutAttributes *itemAttri = [self layoutAttributesForItemAtIndexPath:itemIndexPath];
             [self.attrsMuArray addObject:itemAttri];
         }
         
-        //获取footer的布局属性
-        NSIndexPath *sectionFooterIndexPath = [NSIndexPath indexPathForItem:0 inSection:i];
+        //添加footer的布局属性
         UICollectionViewLayoutAttributes *footerAttri = [self layoutAttributesForSupplementaryViewOfKind:UICollectionElementKindSectionFooter
-                                                                                             atIndexPath:sectionFooterIndexPath];
+                                                                                             atIndexPath:[NSIndexPath indexPathForItem:0 inSection:i]];
         [self.attrsMuArray addObject:footerAttri];
     }
 }
@@ -178,30 +131,22 @@
  */
 - (UICollectionViewLayoutAttributes *)layoutAttributesForItemAtIndexPath:(NSIndexPath *)indexPath{
     UICollectionViewLayoutAttributes *attri = [UICollectionViewLayoutAttributes layoutAttributesForCellWithIndexPath:indexPath];
+    __weak typeof(self) weakSelf = self;
     
-    //最短那一列的序号
-    __block NSInteger minColumn = 0;
-    
-    //最短那一列的最大Y值
-    __block CGFloat minY = [self.maxColumnYMuArray[0] floatValue];
-    [self.maxColumnYMuArray enumerateObjectsUsingBlock:^(NSNumber *columnY, NSUInteger idx, BOOL * _Nonnull stop) {
-        if ([columnY floatValue] < minY) {
-            minY = [columnY floatValue];
-            minColumn = idx;
-        }
+    [self getMinColumnInfo:^(NSInteger minColumn, CGFloat minY) {
+        CGFloat itemHeight = weakSelf.itemHeightBlock(indexPath);
+        CGFloat itemX = weakSelf.sectionEdgeInset.left + minColumn * (weakSelf.columnMargin + [weakSelf itemWidth]);
+        CGFloat itemY = minY + weakSelf.rowMargin;
+        attri.frame = CGRectMake(itemX, itemY, [weakSelf itemWidth], itemHeight);
+        weakSelf.maxColumnYMuArray[minColumn] = @(CGRectGetMaxY(attri.frame));
+        weakSelf.lastIndexPath = indexPath;
     }];
     
-    CGFloat itemHeight = self.itemHeightBlock(indexPath);
-    CGFloat itemX = self.sectionEdgeInset.left + minColumn * (self.columnMargin + self.itemWidth);
-    CGFloat itemY = minY + self.rowMargin;
-    
-    attri.frame = CGRectMake(itemX, itemY, self.itemWidth, itemHeight);
-    self.maxColumnYMuArray[minColumn] = @(CGRectGetMaxY(attri.frame));
     return attri;
 }
 
 /**
- *  反回头尾视图
+ *  返回头尾视图布局对象
  */
 - (UICollectionViewLayoutAttributes *)layoutAttributesForSupplementaryViewOfKind:(NSString *)elementKind
                                                                      atIndexPath:(NSIndexPath *)indexPath{
@@ -219,14 +164,9 @@
     UICollectionViewLayoutAttributes *headerAttri = [UICollectionViewLayoutAttributes layoutAttributesForSupplementaryViewOfKind:UICollectionElementKindSectionHeader
                                                                                                                    withIndexPath:indexPath];
     CGSize headerSize = self.headerSizeBlock(indexPath);
-    CGFloat maxY = [self getMaxY];
-    if (self.section != indexPath.section) {
-        headerAttri.frame = CGRectMake(0, maxY + self.sectionEdgeInset.top, headerSize.width, headerSize.height);
-        self.section = indexPath.section;
-    }else{
-        headerAttri.frame = CGRectMake(0, maxY, headerSize.width, headerSize.height);
-    }
+    headerAttri.frame = CGRectMake(0, [self getMaxY] + self.sectionEdgeInset.top, headerSize.width, headerSize.height);
     [self updateMaxY:CGRectGetMaxY(headerAttri.frame)];
+    self.lastIndexPath = indexPath;
     return headerAttri;
 }
 
@@ -237,8 +177,7 @@
     UICollectionViewLayoutAttributes *footerAttri = [UICollectionViewLayoutAttributes layoutAttributesForSupplementaryViewOfKind:UICollectionElementKindSectionFooter
                                                                                                                    withIndexPath:indexPath];
     CGSize footerSize = self.footerSizeBlock(indexPath);
-    CGFloat maxY = [self getMaxY];
-    footerAttri.frame = CGRectMake(0, maxY + self.sectionEdgeInset.bottom, footerSize.width, footerSize.height);
+    footerAttri.frame = CGRectMake(0, [self getMaxY] + self.sectionEdgeInset.bottom, footerSize.width, footerSize.height);
     [self updateMaxY:CGRectGetMaxY(footerAttri.frame)];
     return footerAttri;
 }
@@ -246,15 +185,34 @@
 #pragma mark - privateMethod
 
 /**
+ *  获取最短列的数据
+ */
+- (void)getMinColumnInfo:(void(^)(NSInteger minColumn, CGFloat minY))completeBlock{
+    __block NSInteger minColumn = 0;    //最短那一列的序号
+    __block CGFloat minY = [self.maxColumnYMuArray[0] floatValue];  //最短那一列的最大Y值
+    
+    [self.maxColumnYMuArray enumerateObjectsUsingBlock:^(NSNumber *columnY, NSUInteger idx, BOOL * _Nonnull stop) {
+        if ([columnY floatValue] < minY) {
+            minY = [columnY floatValue];
+            minColumn = idx;
+        }
+    }];
+    
+    completeBlock(minColumn, minY);
+}
+
+/**
  *  获取最大Y值
  */
 - (CGFloat)getMaxY{
     __block CGFloat maxY = [self.maxColumnYMuArray[0] floatValue];
+    
     [self.maxColumnYMuArray enumerateObjectsUsingBlock:^(NSNumber *columnY, NSUInteger idx, BOOL * _Nonnull stop) {
         if ([columnY floatValue] > maxY) {
             maxY = [columnY floatValue];
         }
     }];
+    
     return maxY;
 }
 
@@ -262,20 +220,35 @@
  *  更新最大Y值
  */
 - (void)updateMaxY:(CGFloat)maxY{
-    if (self.maxColumnYMuArray.count > 0) {
-        [self.maxColumnYMuArray removeAllObjects];
-    }
     
-    for (int i = 0; i < self.columnsCount; i++) {
-        [self.maxColumnYMuArray addObject:@(maxY)];
+    __weak typeof(self) weakSelf = self;
+    
+    [self.maxColumnYMuArray enumerateObjectsUsingBlock:^(NSNumber *columnY, NSUInteger idx, BOOL * _Nonnull stop) {
+        [weakSelf.maxColumnYMuArray replaceObjectAtIndex:idx withObject:@(maxY)];
+    }];
+}
+
+/**
+ *  获取itemWidth
+ */
+- (CGFloat)itemWidth{
+    static BOOL isFinish = NO;
+    
+    if (!isFinish) {
+        isFinish = YES;
+        CGFloat allGap = self.sectionEdgeInset.left + self.sectionEdgeInset.right + (self.columnsCount - 1) * self.columnMargin;
+        _itemWidth = (CGRectGetWidth(self.collectionView.frame) - allGap) / self.columnsCount;
     }
+    return _itemWidth;
 }
 
 #pragma mark - getter
 
 - (NSMutableArray *)maxColumnYMuArray{
     if (!_maxColumnYMuArray) {
-        _maxColumnYMuArray = [NSMutableArray new];
+        _maxColumnYMuArray = [NSMutableArray arrayWithArray:@[@(self.sectionEdgeInset.top),
+                                                              @(self.sectionEdgeInset.top),
+                                                              @(self.sectionEdgeInset.top)]];
     }
     return _maxColumnYMuArray;
 }
@@ -288,3 +261,5 @@
 }
 
 @end
+
+
