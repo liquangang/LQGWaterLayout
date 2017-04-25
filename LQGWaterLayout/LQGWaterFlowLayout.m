@@ -24,11 +24,13 @@
 @property (nonatomic, assign) CGFloat columnMargin;
 /** 每组的间距*/
 @property (nonatomic, assign) UIEdgeInsets sectionEdgeInset;
+/** item的宽度*/
+@property (nonatomic, assign) CGFloat itemWidth;
 
 /** 
  * 获得item高度（必须实现）
  */
-@property (nonatomic, copy) CGSize(^itemSizeBlock)(NSIndexPath *itemIndex);
+@property (nonatomic, copy) CGFloat(^itemHeightBlock)(NSIndexPath *itemIndex);
 
 /**
  *  获得头视图高度（必须实现）
@@ -44,17 +46,19 @@
 
 @implementation LQGWaterFlowLayout
 
+#pragma mark - init方法
+
 - (instancetype)initWithColumnsCount:(NSUInteger)columnsCount
                            rowMargin:(CGFloat)rowMargin
                        columnsMargin:(CGFloat)columnMargin
                     sectionEdgeInset:(UIEdgeInsets)sectionEdgeInset
-                         getItemSize:(CGSize(^)(NSIndexPath *itemIndex))itemSizeBlock
+                         getItemSize:(CGFloat(^)(NSIndexPath *itemIndex))itemHeightBlock
                        getHeaderSize:(CGSize(^)(NSIndexPath *headerIndex))headerSizeBlock
                        getFooterSize:(CGSize(^)(NSIndexPath *footerIndex))footerSizeBlock
 {
     if (self = [super init]) {
         
-        self.itemSizeBlock = itemSizeBlock;
+        self.itemHeightBlock = itemHeightBlock;
         self.headerSizeBlock = headerSizeBlock;
         self.footerSizeBlock = footerSizeBlock;
         
@@ -95,6 +99,9 @@
         if (columnsCount == 0) {
             self.columnsCount = 1;
         }
+        
+        CGFloat allGap = self.sectionEdgeInset.left + self.sectionEdgeInset.right + (self.columnsCount - 1) * self.columnMargin;
+        self.itemWidth = (CGRectGetWidth(self.collectionView.frame) - allGap) / self.columnsCount;
     }
     return self;
 }
@@ -184,11 +191,11 @@
         }
     }];
     
-    CGSize itemSize = self.itemSizeBlock(indexPath);
-    CGFloat itemX = self.sectionEdgeInset.left + minColumn * (self.columnMargin + itemSize.width);
+    CGFloat itemHeight = self.itemHeightBlock(indexPath);
+    CGFloat itemX = self.sectionEdgeInset.left + minColumn * (self.columnMargin + self.itemWidth);
     CGFloat itemY = minY + self.rowMargin;
     
-    attri.frame = CGRectMake(itemX, itemY, itemSize.width, itemSize.height);
+    attri.frame = CGRectMake(itemX, itemY, self.itemWidth, itemHeight);
     self.maxColumnYMuArray[minColumn] = @(CGRectGetMaxY(attri.frame));
     return attri;
 }

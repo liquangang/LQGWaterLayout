@@ -26,7 +26,7 @@
  @param rowMargin 行距
  @param columnMargin 列距
  @param sectionEdgeInset 组边距
- @param itemSizeBlock 获取每个itemsize的block
+ @param itemHeightBlock 获取每个itemHeight的block
  @param headerSizeBlock 获取每个headersize的block
  @param footerSizeBlock 获取每个footersize的block
  @return 初始化完成的布局对象
@@ -35,7 +35,7 @@
                            rowMargin:(CGFloat)rowMargin
                        columnsMargin:(CGFloat)columnMargin
                     sectionEdgeInset:(UIEdgeInsets)sectionEdgeInset
-                         getItemSize:(CGSize(^)(NSIndexPath *itemIndex))itemSizeBlock
+                         getItemSize:(CGFloat(^)(NSIndexPath *itemIndex))itemHeightBlock
                        getHeaderSize:(CGSize(^)(NSIndexPath *headerIndex))headerSizeBlock
                        getFooterSize:(CGSize(^)(NSIndexPath *footerIndex))footerSizeBlock;
 
