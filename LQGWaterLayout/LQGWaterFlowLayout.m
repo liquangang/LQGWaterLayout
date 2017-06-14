@@ -1,3 +1,4 @@
+
 //
 //  LQGWaterFlowLayout.m
 //  LQGWaterLayout
@@ -8,41 +9,53 @@
 
 #import "LQGWaterFlowLayout.h"
 
+//每组的数据变更状态标识
+typedef NS_ENUM(NSInteger, SectionStatus){
+    allUpdate,      //全部重新计算或者从头开始计算
+    littleUpdate,   //计算新增item和footer
+    withOutUpdate   //不需要计算
+};
+
+@interface SectionModel : NSObject
+@property (nonatomic, assign) SectionStatus sectionStatus;          //该组的数据变更状态
+@property (nonatomic, assign) NSUInteger lastNum;                   //该组的item的个数
+@property (nonatomic, strong) NSMutableArray *sectionAttriMuArray;  //该组对应的所有布局属性
+@property (nonatomic, strong) NSMutableArray *maxYMuArray;          //该组最下面一行的最大Y值
+@end
+
+@implementation SectionModel
+
+- (NSMutableArray *)sectionAttriMuArray{
+    if (!_sectionAttriMuArray) {
+        _sectionAttriMuArray = [NSMutableArray new];
+    }
+    return _sectionAttriMuArray;
+}
+
+- (NSMutableArray *)maxYMuArray{
+    if (!_maxYMuArray) {
+        _maxYMuArray = [NSMutableArray new];
+    }
+    return _maxYMuArray;
+}
+
+@end
+
 @interface LQGWaterFlowLayout()
 
-//存储每列的最大y值
-@property (nonatomic, strong) NSMutableArray *maxColumnYMuArray;
-//存储每一组最后一行item的最大Y值
-@property (nonatomic, strong) NSMutableArray *lastSectionMaxYMuArray;
-//存储布局属性
-@property (nonatomic, strong) NSMutableArray *attrsMuArray;
-//当前布局的最后一个item
-@property (nonatomic, assign) NSIndexPath *lastIndexPath;
-/** 列数*/
-@property (nonatomic, assign) NSInteger columnsCount;
-/** 行距*/
-@property (nonatomic, assign) CGFloat rowMargin;
-/** 列距*/
-@property (nonatomic, assign) CGFloat columnMargin;
-/** 每组的间距*/
-@property (nonatomic, assign) UIEdgeInsets sectionEdgeInset;
-/** item的宽度*/
-@property (nonatomic, assign) CGFloat itemWidth;
+@property (nonatomic, strong) NSMutableArray *maxColumnYMuArray;            /** 存储每列的最大y值*/
+@property (nonatomic, strong) NSMutableArray *attrsMuArray;                 /** 存储布局属性*/
+@property (nonatomic, assign) NSInteger columnsCount;                       /** 列数*/
+@property (nonatomic, assign) CGFloat rowMargin;                            /** 行距*/
+@property (nonatomic, assign) CGFloat columnMargin;                         /** 列距*/
+@property (nonatomic, assign) UIEdgeInsets sectionEdgeInset;                /** 每组的间距*/
+@property (nonatomic, assign) CGFloat itemWidth;                            /** item的宽度*/
+@property (nonatomic, strong) NSMutableArray *sectionInfoMuArray;           /** 存储每个组上次的信息*/
 
-/**
- * 获得item高度（必须实现）
- */
-@property (nonatomic, copy) CGFloat(^itemHeightBlock)(NSIndexPath *itemIndex);
 
-/**
- *  获得头视图高度（必须实现）
- */
-@property (nonatomic, copy) CGSize(^headerSizeBlock)(NSIndexPath *headerIndex);
-
-/**
- *  获得尾视图高度（必须实现）
- */
-@property (nonatomic, copy) CGSize(^footerSizeBlock)(NSIndexPath *footerIndex);
+@property (nonatomic, copy) CGFloat(^itemHeightBlock)(NSIndexPath *itemIndex);          /** 获得item高度（必须实现）*/
+@property (nonatomic, copy) CGSize(^headerSizeBlock)(NSIndexPath *headerIndex);         /** 获得头视图高度（必须实现）*/
+@property (nonatomic, copy) CGSize(^footerSizeBlock)(NSIndexPath *footerIndex);         /** 获得尾视图高度（必须实现）*/
 
 @end
 
@@ -106,47 +119,65 @@
  */
 - (void)prepareLayout{
     [super prepareLayout];
-    static BOOL isFinishHeader = NO;
-    [self setBeforeLayout];
+    
+    [self updateSectionAttri];
     
     //如果是第一次布局计算，所有都进行计算
     //如果是第二次和之后的布局计算， 只计算新增的item和最后一个footer
     //添加每个item的布局到布局数组中
-    for (NSInteger i = self.lastIndexPath.section; i < self.collectionView.numberOfSections; i++) {
+    for (NSInteger i = 0; i < self.collectionView.numberOfSections; i++) {
+        SectionModel *tempModel = self.sectionInfoMuArray[i];
         
-        if (!isFinishHeader) {
+        //如果该组不需要更新，需要更新最大Y值数组为该组的footer的Y值
+        if (tempModel.sectionStatus == withOutUpdate) {
+            UICollectionViewLayoutAttributes *footerAttri = tempModel.sectionAttriMuArray.lastObject;
+            [self updateMaxY:CGRectGetMaxY(footerAttri.frame)];
+            continue;
+        }
+        
+        //如果该组只需要部分更新，需要移除footer，并设置最大Y值数组
+        if (tempModel.sectionStatus == littleUpdate) {
+            [tempModel.sectionAttriMuArray removeLastObject];
+            [self setMaxY:i];
+        }
+        
+        //如果该组需要全部更新，需要计算header
+        if (tempModel.sectionStatus == allUpdate) {
+            [tempModel.sectionAttriMuArray removeAllObjects];
             
             //添加header的布局属性
             UICollectionViewLayoutAttributes *headerAttri = [self layoutAttributesForSupplementaryViewOfKind:UICollectionElementKindSectionHeader
                                                                                                  atIndexPath:[NSIndexPath indexPathForItem:0 inSection:i]];
-            [self.attrsMuArray addObject:headerAttri];
+            [tempModel.sectionAttriMuArray addObject:headerAttri];
         }
-        
         
         //添加当前组的新增的item的布局属性
-        for (NSInteger j = self.lastIndexPath.item + 1; j < [self.collectionView numberOfItemsInSection:i]; j++) {
+        for (NSInteger j = ((tempModel.sectionStatus == littleUpdate) ? tempModel.lastNum : 0);
+             j < [self.collectionView numberOfItemsInSection:i];
+             j++) {
             NSIndexPath *itemIndexPath = [NSIndexPath indexPathForItem:j inSection:i];
             UICollectionViewLayoutAttributes *itemAttri = [self layoutAttributesForItemAtIndexPath:itemIndexPath];
-            [self.attrsMuArray addObject:itemAttri];
+            [tempModel.sectionAttriMuArray addObject:itemAttri];
         }
         
-        if (!isFinishHeader || (i == self.collectionView.numberOfSections - 1)) {
-            
-            //添加footer的布局属性
-            UICollectionViewLayoutAttributes *footerAttri = [self layoutAttributesForSupplementaryViewOfKind:UICollectionElementKindSectionFooter
-                                                                                                 atIndexPath:[NSIndexPath indexPathForItem:0 inSection:i]];
-            [self.attrsMuArray addObject:footerAttri];
-        }
+        //添加footer的布局属性
+        UICollectionViewLayoutAttributes *footerAttri = [self layoutAttributesForSupplementaryViewOfKind:UICollectionElementKindSectionFooter
+                                                                                             atIndexPath:[NSIndexPath indexPathForItem:0 inSection:i]];
+        [tempModel.sectionAttriMuArray addObject:footerAttri];
+        
+        //更新该组的item个数
+        tempModel.lastNum = [self.collectionView numberOfItemsInSection:i];
     }
     
-    isFinishHeader = YES;
+    //合并布局属性
+    [self mergeWholeArr];
 }
 
 /**
  *  返回每一个item的布局属性
  */
 - (UICollectionViewLayoutAttributes *)layoutAttributesForItemAtIndexPath:(NSIndexPath *)indexPath{
-    UICollectionViewLayoutAttributes *attri = [UICollectionViewLayoutAttributes layoutAttributesForCellWithIndexPath:indexPath];
+    __block UICollectionViewLayoutAttributes *attri = [UICollectionViewLayoutAttributes layoutAttributesForCellWithIndexPath:indexPath];
     __weak typeof(self) weakSelf = self;
     
     [self getMinColumnInfo:^(NSInteger minColumn, CGFloat minY) {
@@ -155,7 +186,6 @@
         CGFloat itemY = minY + weakSelf.rowMargin;
         attri.frame = CGRectMake(itemX, itemY, [weakSelf itemWidth], itemHeight);
         weakSelf.maxColumnYMuArray[minColumn] = @(CGRectGetMaxY(attri.frame));
-        weakSelf.lastIndexPath = indexPath;
     }];
     
     return attri;
@@ -182,7 +212,6 @@
     CGSize headerSize = self.headerSizeBlock(indexPath);
     headerAttri.frame = CGRectMake(0, [self getMaxY] + self.sectionEdgeInset.top, headerSize.width, headerSize.height);
     [self updateMaxY:CGRectGetMaxY(headerAttri.frame)];
-    //    self.lastIndexPath = indexPath;
     return headerAttri;
 }
 
@@ -190,11 +219,10 @@
  *  获得尾部视图的布局属性
  */
 - (UICollectionViewLayoutAttributes *)attributesForFooterAtIndexPath:(NSIndexPath *)indexPath{
-    UICollectionViewLayoutAttributes *footerAttri = [UICollectionViewLayoutAttributes layoutAttributesForSupplementaryViewOfKind:UICollectionElementKindSectionFooter
-                                                                                                                   withIndexPath:indexPath];
+    [self setSectionMaxY:indexPath.section];
+    UICollectionViewLayoutAttributes *footerAttri = [UICollectionViewLayoutAttributes layoutAttributesForSupplementaryViewOfKind:UICollectionElementKindSectionFooter withIndexPath:indexPath];
     CGSize footerSize = self.footerSizeBlock(indexPath);
     footerAttri.frame = CGRectMake(0, [self getMaxY] + self.sectionEdgeInset.bottom, footerSize.width, footerSize.height);
-    [self saveLastRowMaxY];
     [self updateMaxY:CGRectGetMaxY(footerAttri.frame)];
     return footerAttri;
 }
@@ -202,26 +230,65 @@
 #pragma mark - privateMethod
 
 /**
- *  布局之前的设置
+ *  判断每组的状态
  */
-- (void)setBeforeLayout{
-    [self.attrsMuArray removeLastObject];
-    __weak typeof(self) weakSelf = self;
+- (void)updateSectionAttri{
     
-    [self.lastSectionMaxYMuArray enumerateObjectsUsingBlock:^(NSNumber *columnY, NSUInteger idx, BOOL * _Nonnull stop) {
-        [weakSelf.maxColumnYMuArray replaceObjectAtIndex:idx withObject:columnY];
-    }];
+    for (int i = 0; i < self.collectionView.numberOfSections; i++) {
+        
+        if (self.sectionInfoMuArray.count < self.collectionView.numberOfSections) {
+            [self.sectionInfoMuArray addObject:[SectionModel new]];
+        }
+        
+        SectionModel *tempModel = self.sectionInfoMuArray[i];
+        SectionModel *tempModel1 = i > 0 ? self.sectionInfoMuArray[i - 1] : nil;
+        
+        if (tempModel1) {
+            if (tempModel1.sectionStatus != withOutUpdate) {
+                tempModel.sectionStatus = allUpdate;
+                continue;
+            }
+        }
+        
+        if (tempModel.lastNum == 0 && [self.collectionView numberOfItemsInSection:i] > 0) {
+            tempModel.sectionStatus = allUpdate;
+        }else if (tempModel.lastNum == [self.collectionView numberOfItemsInSection:i]) {
+            tempModel.sectionStatus = withOutUpdate;
+        }else if (tempModel.lastNum < [self.collectionView numberOfItemsInSection:i]) {
+            tempModel.sectionStatus = littleUpdate;
+        }
+        
+    }
+}
+
+/** 组合成一个完整的布局数组*/
+- (void)mergeWholeArr{
+    [self.attrsMuArray removeAllObjects];
+    
+    for (int i = 0; i < self.collectionView.numberOfSections; i++) {
+        SectionModel *tempModel = self.sectionInfoMuArray[i];
+        [self.attrsMuArray addObjectsFromArray:tempModel.sectionAttriMuArray];
+    }
 }
 
 /**
- *  保存最后一行的最大Y值
+ *  设置每组的最大Y值
  */
-- (void)saveLastRowMaxY{
-    __weak typeof(self) weakSelf = self;
+- (void)setSectionMaxY:(NSInteger)section{
+    SectionModel *tempModel = self.sectionInfoMuArray[section];
+    [tempModel.maxYMuArray removeAllObjects];
+    [tempModel.maxYMuArray addObjectsFromArray:[self.maxColumnYMuArray copy]];
+}
+
+/**
+ *  设置初始最大Y值
+ */
+- (void)setMaxY:(NSInteger)section{
+    SectionModel *tempModel = self.sectionInfoMuArray[section];
     
-    [self.maxColumnYMuArray enumerateObjectsUsingBlock:^(NSNumber *columnY, NSUInteger idx, BOOL * _Nonnull stop) {
-        [weakSelf.lastSectionMaxYMuArray replaceObjectAtIndex:idx withObject:columnY];
-    }];
+    for (int i = 0; i < self.columnsCount; i++) {
+        [self.maxColumnYMuArray replaceObjectAtIndex:i withObject:tempModel.maxYMuArray[i]];
+    }
 }
 
 /**
@@ -286,9 +353,11 @@
 
 - (NSMutableArray *)maxColumnYMuArray{
     if (!_maxColumnYMuArray) {
-        _maxColumnYMuArray = [NSMutableArray arrayWithArray:@[@(self.sectionEdgeInset.top),
-                                                              @(self.sectionEdgeInset.top),
-                                                              @(self.sectionEdgeInset.top)]];
+        NSMutableArray *tempMuArray = [NSMutableArray new];
+        for (int i = 0; i < self.columnsCount; i++) {
+            [tempMuArray addObject:@(self.sectionEdgeInset.top)];
+        }
+        _maxColumnYMuArray = tempMuArray;
     }
     return _maxColumnYMuArray;
 }
@@ -300,22 +369,16 @@
     return _attrsMuArray;
 }
 
-- (NSIndexPath *)lastIndexPath{
-    if (!_lastIndexPath) {
-        _lastIndexPath = [NSIndexPath indexPathForRow:0 inSection:0];
+- (NSMutableArray *)sectionInfoMuArray{
+    if (!_sectionInfoMuArray) {
+        _sectionInfoMuArray = [NSMutableArray new];
+        for (int i = 0; i < self.collectionView.numberOfSections; i++) {
+            SectionModel *tempModel = [SectionModel new];
+            [tempModel.maxYMuArray addObjectsFromArray:self.maxColumnYMuArray.copy];
+            [_sectionInfoMuArray addObject:tempModel];
+        }
     }
-    return _lastIndexPath;
-}
-
-- (NSMutableArray *)lastSectionMaxYMuArray{
-    if (!_lastSectionMaxYMuArray) {
-        _lastSectionMaxYMuArray = [NSMutableArray arrayWithArray:@[@(self.sectionEdgeInset.top),
-                                                                   @(self.sectionEdgeInset.top),
-                                                                   @(self.sectionEdgeInset.top)]];
-    }
-    return _lastSectionMaxYMuArray;
+    return _sectionInfoMuArray;
 }
 
 @end
-
-
