@@ -49,7 +49,7 @@ typedef NS_ENUM(NSInteger, SectionStatus){
 @property (nonatomic, assign) CGFloat rowMargin;                            /** 行距*/
 @property (nonatomic, assign) CGFloat columnMargin;                         /** 列距*/
 @property (nonatomic, assign) UIEdgeInsets sectionEdgeInset;                /** 每组的间距*/
-@property (nonatomic, assign) CGFloat itemWidth;                            /** item的宽度*/
+@property (nonatomic, strong) NSNumber *itemWidth;                          /** item的宽度*/
 @property (nonatomic, strong) NSMutableArray *sectionInfoMuArray;           /** 存储每个组上次的信息*/
 
 
@@ -182,9 +182,9 @@ typedef NS_ENUM(NSInteger, SectionStatus){
     
     [self getMinColumnInfo:^(NSInteger minColumn, CGFloat minY) {
         CGFloat itemHeight = weakSelf.itemHeightBlock(indexPath);
-        CGFloat itemX = weakSelf.sectionEdgeInset.left + minColumn * (weakSelf.columnMargin + [weakSelf itemWidth]);
+        CGFloat itemX = weakSelf.sectionEdgeInset.left + minColumn * (weakSelf.columnMargin + [weakSelf.itemWidth floatValue]);
         CGFloat itemY = minY + weakSelf.rowMargin;
-        attri.frame = CGRectMake(itemX, itemY, [weakSelf itemWidth], itemHeight);
+        attri.frame = CGRectMake(itemX, itemY, [weakSelf.itemWidth floatValue], itemHeight);
         weakSelf.maxColumnYMuArray[minColumn] = @(CGRectGetMaxY(attri.frame));
     }];
     
@@ -335,20 +335,6 @@ typedef NS_ENUM(NSInteger, SectionStatus){
     }];
 }
 
-/**
- *  获取itemWidth
- */
-- (CGFloat)itemWidth{
-    static BOOL isFinish = NO;
-    
-    if (!isFinish) {
-        isFinish = YES;
-        CGFloat allGap = self.sectionEdgeInset.left + self.sectionEdgeInset.right + (self.columnsCount - 1) * self.columnMargin;
-        _itemWidth = (CGRectGetWidth(self.collectionView.frame) - allGap) / self.columnsCount;
-    }
-    return _itemWidth;
-}
-
 #pragma mark - getter
 
 - (NSMutableArray *)maxColumnYMuArray{
@@ -379,6 +365,14 @@ typedef NS_ENUM(NSInteger, SectionStatus){
         }
     }
     return _sectionInfoMuArray;
+}
+
+- (NSNumber *)itemWidth{
+    if (!_itemWidth) {
+        CGFloat allGap = self.sectionEdgeInset.left + self.sectionEdgeInset.right + (self.columnsCount - 1) * self.columnMargin;
+        _itemWidth = @((CGRectGetWidth(self.collectionView.frame) - allGap) / self.columnsCount);
+    }
+    return _itemWidth;
 }
 
 @end
